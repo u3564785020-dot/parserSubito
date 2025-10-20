@@ -143,12 +143,14 @@ class UserRepository:
         try:
             cursor = self.collection.find({
                 "parsing_active": True,
-                "is_blocked": False,
-                "subscription_end": {"$gt": datetime.utcnow()}
+                "is_blocked": False
             })
             users = []
             async for data in cursor:
-                users.append(User.from_dict(data))
+                user = User.from_dict(data)
+                # Проверяем подписку отдельно
+                if user.has_active_subscription():
+                    users.append(user)
             return users
         except Exception as e:
             logger.error(f"❌ Ошибка получения активных парсеров: {e}")
