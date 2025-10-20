@@ -53,7 +53,7 @@ class MongoDB:
     
     def get_database(self) -> AsyncIOMotorDatabase:
         """Получение объекта базы данных"""
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("База данных не подключена")
         return self.db
 
