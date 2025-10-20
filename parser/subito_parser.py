@@ -121,76 +121,163 @@ class SubitoParser:
         """Парсинг страницы со списком объявлений"""
         listings = []
         
-        # Поиск карточек объявлений
-        # Subito.it использует различные классы, ищем по data-id или другим атрибутам
-        items = soup.find_all('div', class_=re.compile(r'item.*card|listing.*item', re.I))
+        logger.info("🔍 Ищем объявления на странице...")
+        
+        # Современные селекторы для Subito.it (2024-2025)
+        # Пробуем разные варианты селекторов
+        selectors_to_try = [
+            # Основные селекторы для карточек объявлений
+            'div[data-testid*="listing"]',
+            'div[class*="listing"]',
+            'div[class*="item"]',
+            'article[class*="listing"]',
+            'div[class*="card"]',
+            # Селекторы для ссылок на объявления
+            'a[href*="/annunci/"]',
+            'a[href*=".htm"]',
+            # Общие селекторы
+            'div[data-testid]',
+            'article',
+            'div[class*="AdItem"]'
+        ]
+        
+        items = []
+        for selector in selectors_to_try:
+            found_items = soup.select(selector)
+            logger.info(f"🔍 Селектор '{selector}': найдено {len(found_items)} элементов")
+            if found_items:
+                items = found_items
+                logger.info(f"✅ Используем селектор: {selector}")
+                break
         
         if not items:
-            # Альтернативный поиск
-            items = soup.find_all('a', href=re.compile(r'/.*\.htm$'))
+            logger.warning("❌ Не найдено элементов с объявлениями")
+            # Попробуем найти любые ссылки
+            items = soup.find_all('a', href=True)
+            logger.info(f"🔍 Найдено {len(items)} ссылок на странице")
         
-        logger.info(f"📦 Найдено элементов на странице: {len(items)}")
+        logger.info(f"📦 Всего найдено элементов для обработки: {len(items)}")
         
-        for item in items[:max_results]:
+        processed_count = 0
+        for item in items[:max_results * 3]:  # Обрабатываем больше, чем нужно, на случай фильтрации
             try:
+                processed_count += 1
+                logger.debug(f"🔍 Обрабатываем элемент {processed_count}/{min(len(items), max_results * 3)}")
+                
                 listing = await self._parse_listing_card(item)
                 if listing and self._matches_filters(listing, settings):
+                    logger.info(f"✅ Объявление прошло фильтры: {listing.title}")
                     # Получаем детальную информацию
                     detailed_listing = await self._fetch_listing_details(listing.url)
                     if detailed_listing:
                         # Проверяем фильтры продавца
                         if self._matches_seller_filters(detailed_listing, settings):
                             listings.append(detailed_listing)
+                            logger.info(f"✅ Добавлено объявление: {detailed_listing.title}")
                             if len(listings) >= max_results:
                                 break
+                        else:
+                            logger.debug(f"⏭️ Объявление не прошло фильтры продавца: {detailed_listing.title}")
+                    else:
+                        logger.debug(f"⏭️ Не удалось получить детали объявления: {listing.title}")
+                else:
+                    logger.debug(f"⏭️ Объявление не прошло базовые фильтры")
             except Exception as e:
-                logger.error(f"❌ Ошибка парсинга карточки: {e}")
+                logger.error(f"❌ Ошибка обработки элемента {processed_count}: {e}")
                 continue
         
+        logger.info(f"✅ Обработано элементов: {processed_count}, найдено объявлений: {len(listings)}")
         return listings
     
     async def _parse_listing_card(self, item) -> Optional[Listing]:
         """Парсинг карточки объявления из списка"""
         try:
-            # Извлечение URL
-            link = item.find('a', href=re.compile(r'/.*\.htm$'))
-            if not link:
-                link = item if item.name == 'a' else None
+            logger.debug(f"🔍 Парсим элемент: {item.name if hasattr(item, 'name') else type(item)}")
+            
+            # Извлечение URL - пробуем разные способы
+            link = None
+            
+            # Способ 1: ищем ссылку внутри элемента
+            if item.name == 'a':
+                link = item
+            else:
+                # Ищем ссылку внутри элемента
+                link = item.find('a', href=True)
+            
+            # Способ 2: ищем по href атрибуту
+            if not link and hasattr(item, 'get') and item.get('href'):
+                link = item
             
             if not link or not link.get('href'):
+                logger.debug("⏭️ Не найдена ссылка в элементе")
                 return None
             
             url = urljoin(self.BASE_URL, link['href'])
+            logger.debug(f"🔗 Найдена ссылка: {url}")
             
             # Извлечение ID из URL
             listing_id = url.split('/')[-1].replace('.htm', '').split('-')[-1]
+            if not listing_id or listing_id == 'htm':
+                listing_id = url.split('/')[-2] if len(url.split('/')) > 1 else str(hash(url))
             
-            # Извлечение названия
-            title_elem = item.find(['h2', 'h3', 'p'], class_=re.compile(r'title|name', re.I))
-            title = title_elem.get_text(strip=True) if title_elem else "Без названия"
+            # Извлечение названия - пробуем разные селекторы
+            title = "Без названия"
+            title_selectors = [
+                'h1', 'h2', 'h3', 'h4',
+                '[class*="title"]', '[class*="name"]', '[class*="heading"]',
+                '[data-testid*="title"]', '[data-testid*="name"]'
+            ]
             
-            # Извлечение цены
-            price_elem = item.find(['span', 'p', 'div'], class_=re.compile(r'price|euro', re.I))
+            for selector in title_selectors:
+                title_elem = item.find(selector) if hasattr(item, 'find') else None
+                if title_elem and title_elem.get_text(strip=True):
+                    title = title_elem.get_text(strip=True)
+                    logger.debug(f"📝 Найдено название: {title}")
+                    break
+            
+            # Если не нашли в элементе, ищем в ссылке
+            if title == "Без названия" and link:
+                title_text = link.get_text(strip=True)
+                if title_text:
+                    title = title_text
+                    logger.debug(f"📝 Название из ссылки: {title}")
+            
+            # Извлечение цены - пробуем разные селекторы
             price = 0.0
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                price = self._extract_price(price_text)
+            price_selectors = [
+                '[class*="price"]', '[class*="euro"]', '[class*="cost"]',
+                '[data-testid*="price"]', 'span[class*="price"]', 'div[class*="price"]'
+            ]
+            
+            for selector in price_selectors:
+                price_elem = item.find(selector) if hasattr(item, 'find') else None
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    extracted_price = self._extract_price(price_text)
+                    if extracted_price > 0:
+                        price = extracted_price
+                        logger.debug(f"💰 Найдена цена: {price}")
+                        break
             
             # Извлечение изображения
-            img_elem = item.find('img')
             image_url = None
+            img_elem = item.find('img') if hasattr(item, 'find') else None
             if img_elem:
-                image_url = img_elem.get('src') or img_elem.get('data-src')
+                image_url = img_elem.get('src') or img_elem.get('data-src') or img_elem.get('data-lazy')
                 if image_url and not image_url.startswith('http'):
                     image_url = urljoin(self.BASE_URL, image_url)
+                logger.debug(f"🖼️ Найдено изображение: {image_url}")
             
-            return Listing(
+            listing = Listing(
                 listing_id=listing_id,
                 title=title,
                 price=price,
                 url=url,
                 image_url=image_url
             )
+            
+            logger.debug(f"✅ Создано объявление: {listing.title} - {listing.price}€")
+            return listing
             
         except Exception as e:
             logger.error(f"❌ Ошибка парсинга карточки: {e}")

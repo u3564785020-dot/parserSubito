@@ -306,6 +306,63 @@ async def cmd_unblock_user(message: Message, user_repo: UserRepository):
         await message.answer("❌ Ошибка при разблокировке")
 
 
+@router.message(Command("debug_parse"))
+async def cmd_debug_parse(message: Message, user_repo: UserRepository):
+    """Полная диагностика парсинга"""
+    await message.answer("🔍 Запускаю полную диагностику парсинга...")
+    
+    try:
+        # 1. Проверяем статус пользователя
+        user = await user_repo.get_user(message.from_user.id)
+        if not user:
+            await message.answer("❌ Пользователь не найден в базе данных")
+            return
+        
+        debug_info = f"👤 <b>Статус пользователя {message.from_user.id}:</b>\n"
+        debug_info += f"🔍 Парсинг активен: {'✅ Да' if user.parsing_active else '❌ Нет'}\n"
+        debug_info += f"🚫 Заблокирован: {'❌ Да' if user.is_blocked else '✅ Нет'}\n"
+        debug_info += f"📅 Подписка до: {user.subscription_end}\n"
+        debug_info += f"✅ Подписка активна: {'✅ Да' if user.has_active_subscription() else '❌ Нет'}\n\n"
+        
+        # 2. Проверяем активных парсеров
+        active_users = await user_repo.get_active_parsers()
+        debug_info += f"📊 <b>Активных парсеров в системе:</b> {len(active_users)}\n"
+        
+        if active_users:
+            for u in active_users:
+                debug_info += f"  - Пользователь {u.telegram_id}: парсинг={'✅' if u.parsing_active else '❌'}, подписка={'✅' if u.has_active_subscription() else '❌'}\n"
+        
+        debug_info += f"\n⚙️ <b>Настройки поиска:</b>\n"
+        debug_info += f"💰 Цена: {user.search_settings.get('min_price', 'N/A')} - {user.search_settings.get('max_price', 'N/A')} EUR\n"
+        debug_info += f"📊 Макс. объявлений: {user.search_settings.get('max_listings', 'N/A')}\n"
+        debug_info += f"🔑 Ключевые слова: {user.search_settings.get('keywords', [])}\n"
+        
+        await message.answer(debug_info, parse_mode="HTML")
+        
+        # 3. Тестируем парсер напрямую
+        if user.parsing_active and user.has_active_subscription():
+            await message.answer("🧪 Тестирую парсер Subito...")
+            
+            from parser import SubitoParser
+            async with SubitoParser() as parser:
+                listings = await parser.search_listings(user.search_settings, max_results=3)
+                
+                if listings:
+                    await message.answer(f"✅ Парсер работает! Найдено {len(listings)} объявлений")
+                    # Показываем первое объявление
+                    if listings:
+                        first_listing = listings[0]
+                        await message.answer(f"📦 <b>Пример объявления:</b>\n{first_listing.format_telegram_message()}", parse_mode="HTML")
+                else:
+                    await message.answer("❌ Парсер не нашел объявлений")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка диагностики: {e}")
+        logger.error(f"❌ Ошибка диагностики: {e}")
+        import traceback
+        logger.error(f"📋 Traceback: {traceback.format_exc()}")
+
+
 @router.message(Command("test_parse"))
 async def cmd_test_parse(message: Message, user_repo: UserRepository):
     """Тестовый запуск парсинга для администратора"""
