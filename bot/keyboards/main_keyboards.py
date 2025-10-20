@@ -38,6 +38,42 @@ def get_main_menu() -> ReplyKeyboardMarkup:
     return builder.as_markup(resize_keyboard=True)
 
 
+def get_main_menu_admin() -> ReplyKeyboardMarkup:
+    """Главное меню бота для администратора"""
+    builder = ReplyKeyboardBuilder()
+    
+    builder.row(
+        KeyboardButton(text="🔍 Начать поиск"),
+        KeyboardButton(text="👤 Профиль")
+    )
+    builder.row(
+        KeyboardButton(text="❌ Остановить отслеживание"),
+        KeyboardButton(text="🔁 Повторить последний запрос")
+    )
+    builder.row(
+        KeyboardButton(text="🔧 Изменить параметры поиска")
+    )
+    builder.row(
+        KeyboardButton(text="💰 ПРАЙС"),
+        KeyboardButton(text="🎁 БОНУСНАЯ СИСТЕМА")
+    )
+    builder.row(
+        KeyboardButton(text="👨‍💻 РЕФЕРАЛЬНАЯ ПРОГРАММА")
+    )
+    builder.row(
+        KeyboardButton(text="📧 Support"),
+        KeyboardButton(text="💬 FAQ")
+    )
+    builder.row(
+        KeyboardButton(text="📺 Наш канал")
+    )
+    builder.row(
+        KeyboardButton(text="👑 Админ-панель")
+    )
+    
+    return builder.as_markup(resize_keyboard=True)
+
+
 def get_admin_menu() -> ReplyKeyboardMarkup:
     """Меню администратора"""
     builder = ReplyKeyboardBuilder()

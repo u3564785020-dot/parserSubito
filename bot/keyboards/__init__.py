@@ -1,5 +1,6 @@
 from .main_keyboards import (
     get_main_menu,
+    get_main_menu_admin,
     get_admin_menu,
     get_settings_keyboard,
     get_subscription_keyboard,
@@ -9,6 +10,7 @@ from .main_keyboards import (
 
 __all__ = [
     'get_main_menu',
+    'get_main_menu_admin',
     'get_admin_menu',
     'get_settings_keyboard',
     'get_subscription_keyboard',

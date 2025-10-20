@@ -6,7 +6,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from bot.keyboards import get_main_menu, get_admin_menu
+from bot.keyboards import get_main_menu, get_main_menu_admin, get_admin_menu
 from bot.filters import IsAdminFilter
 from core.database import UserRepository
 from config import ADMIN_ID
@@ -47,7 +47,7 @@ async def cmd_start(message: Message, state: FSMContext, user_repo: UserReposito
     
     # Выбор клавиатуры в зависимости от прав
     if message.from_user.id == ADMIN_ID:
-        keyboard = get_admin_menu()
+        keyboard = get_main_menu_admin()
         welcome_text += "\n\n👑 <b>Режим администратора активирован</b>"
     else:
         keyboard = get_main_menu()
@@ -61,14 +61,34 @@ async def cmd_menu(message: Message, state: FSMContext):
     """Возврат в главное меню"""
     await state.clear()
     
+    # Показываем соответствующее меню в зависимости от роли пользователя
     if message.from_user.id == ADMIN_ID:
-        keyboard = get_admin_menu()
-        text = "👑 Панель администратора"
+        keyboard = get_main_menu_admin()
+        text = "📋 Главное меню (Администратор)"
     else:
         keyboard = get_main_menu()
         text = "📋 Главное меню"
     
     await message.answer(text, reply_markup=keyboard)
+
+
+@router.message(F.text == "👑 Админ-панель")
+async def cmd_admin_panel(message: Message, state: FSMContext):
+    """Переход в админ-панель"""
+    await state.clear()
+    
+    admin_text = (
+        "👑 <b>Панель администратора</b>\n\n"
+        "Добро пожаловать в панель управления ботом!\n\n"
+        "Доступные функции:\n"
+        "📊 Статистика - просмотр статистики бота\n"
+        "👥 Управление пользователями - управление пользователями\n"
+        "🎁 Добавить бонусные часы - начисление времени подписки\n"
+        "🚫 Заблокировать пользователя - ограничение доступа\n"
+        "📢 Массовая рассылка - отправка сообщений всем пользователям"
+    )
+    
+    await message.answer(admin_text, reply_markup=get_admin_menu(), parse_mode="HTML")
 
 
 @router.message(F.text == "📧 Support")
