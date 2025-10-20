@@ -84,14 +84,20 @@ class SubitoParser:
         
         search_url = self._build_search_url(settings)
         logger.info(f"🔍 Поиск объявлений: {search_url}")
+        logger.info(f"⚙️ Настройки поиска: {settings}")
         
         try:
+            logger.info(f"🌐 Отправляем запрос на {search_url}")
             async with self.session.get(search_url) as response:
+                logger.info(f"📡 Получен ответ: {response.status}")
+                
                 if response.status != 200:
                     logger.error(f"❌ Ошибка запроса: {response.status}")
                     return []
                 
                 html = await response.text()
+                logger.info(f"📄 Размер HTML: {len(html)} символов")
+                
                 soup = BeautifulSoup(html, 'lxml')
                 
                 # Парсинг списка объявлений
@@ -102,6 +108,8 @@ class SubitoParser:
                 
         except Exception as e:
             logger.error(f"❌ Ошибка поиска объявлений: {e}")
+            import traceback
+            logger.error(f"📋 Traceback: {traceback.format_exc()}")
             return []
     
     async def _parse_listings_page(

@@ -59,18 +59,25 @@ class ParsingScheduler:
     async def _parse_for_all_users(self):
         """Парсинг для всех активных пользователей"""
         try:
+            logger.info("🔄 Начало цикла парсинга...")
+            
             # Получаем список пользователей с активным парсингом
             active_users = await self.user_repo.get_active_parsers()
             
+            logger.info(f"📊 Найдено пользователей с активным парсингом: {len(active_users)}")
+            
             if not active_users:
-                logger.debug("Нет активных пользователей для парсинга")
+                logger.info("ℹ️ Нет активных пользователей для парсинга")
                 return
             
             logger.info(f"🔍 Запуск парсинга для {len(active_users)} пользователей")
             
             async with SubitoParser() as parser:
+                logger.info("✅ Парсер Subito инициализирован")
+                
                 for user in active_users:
                     try:
+                        logger.info(f"👤 Обработка пользователя {user.telegram_id} (подписка до: {user.subscription_end})")
                         await self._parse_for_user(user, parser)
                     except Exception as e:
                         logger.error(f"❌ Ошибка парсинга для пользователя {user.telegram_id}: {e}")
@@ -78,37 +85,52 @@ class ParsingScheduler:
             logger.info("✅ Цикл парсинга завершен")
             
         except Exception as e:
-            logger.error(f"❌ Ошибка в планировщике парсинга: {e}")
+            logger.error(f"❌ Критическая ошибка в планировщике парсинга: {e}")
+            import traceback
+            logger.error(f"📋 Traceback: {traceback.format_exc()}")
     
     async def _parse_for_user(self, user, parser: SubitoParser):
         """Парсинг для конкретного пользователя"""
         try:
+            logger.info(f"🔍 Начинаем парсинг для пользователя {user.telegram_id}")
+            
             # Получаем настройки поиска
             settings = user.search_settings
             max_listings = settings.get('max_listings', 4)
             
+            logger.info(f"⚙️ Настройки пользователя {user.telegram_id}: {settings}")
+            logger.info(f"📊 Максимум объявлений: {max_listings}")
+            
             # Выполняем поиск
+            logger.info(f"🌐 Выполняем поиск на Subito.it...")
             listings = await parser.search_listings(settings, max_results=max_listings)
             
+            logger.info(f"📦 Найдено объявлений: {len(listings) if listings else 0}")
+            
             if not listings:
-                logger.debug(f"Объявления не найдены для пользователя {user.telegram_id}")
+                logger.info(f"ℹ️ Объявления не найдены для пользователя {user.telegram_id}")
                 return
             
             # Отправляем только новые объявления
             sent_count = 0
             for listing in listings:
                 if not user.is_listing_seen(listing.listing_id):
+                    logger.info(f"📤 Отправляем новое объявление {listing.listing_id} пользователю {user.telegram_id}")
                     await self._send_listing_to_user(user.telegram_id, listing)
                     await self.user_repo.add_seen_listing(user.telegram_id, listing.listing_id)
                     sent_count += 1
+                else:
+                    logger.debug(f"⏭️ Объявление {listing.listing_id} уже было отправлено пользователю {user.telegram_id}")
             
             if sent_count > 0:
                 logger.info(f"✅ Отправлено {sent_count} новых объявлений пользователю {user.telegram_id}")
             else:
-                logger.debug(f"Новых объявлений для пользователя {user.telegram_id} не найдено")
+                logger.info(f"ℹ️ Новых объявлений для пользователя {user.telegram_id} не найдено")
             
         except Exception as e:
             logger.error(f"❌ Ошибка парсинга для пользователя {user.telegram_id}: {e}")
+            import traceback
+            logger.error(f"📋 Traceback: {traceback.format_exc()}")
     
     async def _send_listing_to_user(self, telegram_id: int, listing):
         """Отправка объявления пользователю"""

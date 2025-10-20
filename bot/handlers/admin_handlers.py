@@ -305,3 +305,50 @@ async def cmd_unblock_user(message: Message, user_repo: UserRepository):
     else:
         await message.answer("❌ Ошибка при разблокировке")
 
+
+@router.message(Command("test_parse"))
+async def cmd_test_parse(message: Message, user_repo: UserRepository):
+    """Тестовый запуск парсинга для администратора"""
+    from bot.utils import ParsingScheduler
+    from aiogram import Bot
+    
+    # Получаем бота из контекста
+    bot = message.bot
+    
+    # Создаем временный планировщик для тестирования
+    scheduler = ParsingScheduler(bot, user_repo)
+    
+    await message.answer("🧪 Запускаю тестовый парсинг...")
+    
+    try:
+        # Запускаем один цикл парсинга
+        await scheduler._parse_for_all_users()
+        await message.answer("✅ Тестовый парсинг завершен. Проверьте логи.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка тестового парсинга: {e}")
+        logger.error(f"❌ Ошибка тестового парсинга: {e}")
+
+
+@router.message(Command("parse_status"))
+async def cmd_parse_status(message: Message, user_repo: UserRepository):
+    """Проверка статуса парсинга"""
+    # Получаем всех пользователей с активным парсингом
+    active_users = await user_repo.get_active_parsers()
+    
+    if not active_users:
+        await message.answer("ℹ️ Нет пользователей с активным парсингом")
+        return
+    
+    status_text = f"📊 <b>Статус парсинга</b>\n\n"
+    status_text += f"👥 Активных парсеров: {len(active_users)}\n\n"
+    
+    for user in active_users:
+        subscription_status = "✅ Активна" if user.has_active_subscription() else "❌ Истекла"
+        status_text += (
+            f"👤 <b>Пользователь {user.telegram_id}</b>\n"
+            f"📅 Подписка: {subscription_status}\n"
+            f"⏰ До: {user.subscription_end}\n"
+            f"🔍 Парсинг: {'✅ Активен' if user.parsing_active else '❌ Неактивен'}\n\n"
+        )
+    
+    await message.answer(status_text, parse_mode="HTML")
